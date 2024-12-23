@@ -1,0 +1,46 @@
+pip install requests beautifulsoup4 pandas openpyxl
+
+import requests
+from bs4 import BeautifulSoup
+import pandas as pd
+
+# Replace with your Confluence page URL
+url = "https://gbm-confluence.prd.fx.gbm.cloud.uk.hsbc/display/cvit/2025+Epics"
+
+# Confluence login credentials (if required)
+username = "your_username"
+password = "your_password"
+
+# Send a GET request to the Confluence page
+response = requests.get(url, auth=(username, password))
+
+# Check for request success
+if response.status_code == 200:
+    # Parse the page content
+    soup = BeautifulSoup(response.text, "html.parser")
+    
+    # Find the table in the page
+    table = soup.find("table")  # Adjust this if there are multiple tables
+    
+    # Parse table rows
+    rows = table.find_all("tr")
+    data = []
+
+    # Iterate through rows to extract columns
+    for row in rows:
+        cols = row.find_all("td")
+        cols = [col.text.strip() for col in cols]
+        data.append(cols)
+
+    # Convert to a DataFrame
+    df = pd.DataFrame(data)
+
+    # Extract the specific columns you need (e.g., columns 0, 1, and 2)
+    # Adjust column indices as required
+    selected_columns = df.iloc[:, [0, 1, 2]]
+
+    # Save to Excel
+    selected_columns.to_excel("output.xlsx", index=False)
+    print("Data saved to output.xlsx")
+else:
+    print(f"Failed to retrieve page. Status code: {response.status_code}")
