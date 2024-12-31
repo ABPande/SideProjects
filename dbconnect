@@ -1,0 +1,38 @@
+pip install psycopg2 pandas
+import psycopg2
+import pandas as pd
+
+# Database connection parameters
+host = "your_host"
+database = "your_database"
+user = "your_user"
+password = "your_password"
+port = 5432  # Default PostgreSQL port
+
+# Connect to PostgreSQL
+try:
+    conn = psycopg2.connect(
+        host=host,
+        database=database,
+        user=user,
+        password=password,
+        port=port
+    )
+    print("Connection successful")
+except Exception as e:
+    print(f"Error: {e}")
+
+# Run a query and get the result as a DataFrame
+try:
+    query = "SELECT * FROM your_table_name;"  # Replace with your query
+    df = pd.read_sql_query(query, conn)
+    print("Query executed successfully")
+    print(df)
+except Exception as e:
+    print(f"Error: {e}")
+
+# Close the connection
+finally:
+    if conn:
+        conn.close()
+        print("Connection closed")
