@@ -1,0 +1,10 @@
+import pandas as pd
+
+def agreementfunc(col1, col2):
+    # Ensure col1 is treated as a dictionary
+    result = dict(col1) if isinstance(col1, dict) else {}
+    result["col2"] = col2
+    return result
+
+# Assuming 'col1' contains JSON-like dictionaries and 'col2' contains values to add
+df["updated"] = df.apply(lambda row: agreementfunc(row["col1"], row["col2"]), axis=1)
