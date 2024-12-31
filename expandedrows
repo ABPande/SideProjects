@@ -16,3 +16,48 @@ for _, row in df.iterrows():
 expanded_df = pd.DataFrame(expanded_data)
 
 print(expanded_df)
+
+
+import pandas as pd
+
+# Sample data with deeper nested JSON
+data = {
+    "col1": [
+        {"a": {"key1": "value1", "key2": {"subkey1": "subvalue1", "subkey2": "subvalue2"}}, "b": {"key3": "value3"}},
+        {"a": {"key4": "value4"}, "b": {"key5": {"subkey3": "subvalue3"}}},
+        {"a": {"key6": {"subkey4": "subvalue4"}}, "b": {"key7": "value7"}}
+    ],
+    "col2": [10, 20, 30]
+}
+
+df = pd.DataFrame(data)
+
+# Function to flatten a nested dictionary into a single string
+def flatten_nested_dict(nested_dict):
+    flat_items = []
+    for key, value in nested_dict.items():
+        if isinstance(value, dict):  # If value is a nested dictionary
+            for subkey, subvalue in value.items():
+                flat_items.append(f"{key}.{subkey}: {subvalue}")
+        else:
+            flat_items.append(f"{key}: {value}")
+    return "; ".join(flat_items)
+
+# Function to process a single row
+def expand_nested_json(row):
+    expanded_row = []
+    for key, nested_dict in row["col1"].items():
+        if isinstance(nested_dict, dict):  # If the value is a nested dictionary
+            flat_values = flatten_nested_dict(nested_dict)
+            expanded_row.append({"main_key": key, "combined_values": flat_values, "col2": row["col2"]})
+    return expanded_row
+
+# Process all rows in the DataFrame
+expanded_data = []
+for _, row in df.iterrows():
+    expanded_data.extend(expand_nested_json(row))
+
+# Create a new DataFrame with the processed rows
+expanded_df = pd.DataFrame(expanded_data)
+
+print(expanded_df)
