@@ -1,0 +1,18 @@
+# Function to flatten nested JSON into rows
+def expand_nested_json(row):
+    expanded_rows = []
+    for key, nested_dict in row["col1"].items():
+        if isinstance(nested_dict, dict):  # If the value is a nested dictionary
+            for subkey, value in nested_dict.items():
+                expanded_rows.append({"main_key": key, "sub_key": subkey, "value": value, "col2": row["col2"]})
+    return expanded_rows
+
+# Expand rows for each nested JSON
+expanded_data = []
+for _, row in df.iterrows():
+    expanded_data.extend(expand_nested_json(row))
+
+# Create a new DataFrame with the expanded rows
+expanded_df = pd.DataFrame(expanded_data)
+
+print(expanded_df)
