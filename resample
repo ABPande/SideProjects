@@ -1,0 +1,17 @@
+import pandas as pd
+
+# Step 1: Make sure your DataFrame has datetime as index
+df['Time and date'] = pd.to_datetime(df['Time and date'])
+df.set_index('Time and date', inplace=True)
+
+# Step 2: Resample to 15-second intervals
+# For stock price: usually you want the last known price in the interval
+# For turnover and volume: usually you sum them
+
+resampled_df = df.resample('15S').agg({
+    'current stock price': 'last',
+    'turnover volume': 'sum'
+})
+
+# Step 3: Drop rows where 'current stock price' is NaN (optional)
+resampled_df = resampled_df.dropna(subset=['current stock price'])
