@@ -1,0 +1,12 @@
+# Assume 'df' has 15s frequency and datetime index
+df.index = pd.to_datetime(df.index)
+
+# Step 1: Upsample to 2s intervals
+upsampled_df = df.resample('2S').asfreq()
+
+# Step 2: Fill missing values
+# Option 1: Forward fill (keep last known value)
+upsampled_df = upsampled_df.ffill()
+
+# Option 2: Linear interpolation (if numeric)
+# upsampled_df = upsampled_df.interpolate(method='time')
