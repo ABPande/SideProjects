@@ -1,0 +1,23 @@
+import pandas as pd
+
+# Ensure timestamp is datetime and sorted
+df['timestamp'] = pd.to_datetime(df['timestamp'])
+df = df.sort_values('timestamp')
+
+# Option 1: Set timestamp as index
+df.set_index('timestamp', inplace=True)
+
+# Step 1: Identify batch boundaries
+df['batch'] = ((df.index.to_series().diff() > pd.Timedelta('5min')).cumsum())
+
+# Step 2: Resample within each batch
+resampled = (
+    df.groupby('batch')
+      .resample('15S')
+      .mean()  # or .sum(), .first(), etc., depending on your use-case
+      .drop(columns='batch')  # remove duplicate 'batch' from inner index
+      .reset_index(level=0, drop=True)
+)
+
+# Optional: Reset index if needed
+resampled = resampled.reset_index()
