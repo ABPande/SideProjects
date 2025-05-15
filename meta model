@@ -1,0 +1,45 @@
+from tensorflow.keras.models import Model, Sequential
+from tensorflow.keras.layers import Input, Dense, BatchNormalization, Dropout, Concatenate
+from tensorflow.keras.optimizers import Adam
+from sklearn.model_selection import train_test_split
+import numpy as np
+
+# Step 1: Assume X, y created using your create_sequences()
+# X: shape (samples, timesteps, features)
+# y: shape (samples, )
+
+# Step 2: Flatten or pool X to feed into base model
+X_flat = X.reshape(X.shape[0], -1)
+
+# Step 3: Train base model
+input_shape = (X_flat.shape[1],)
+base_model = Sequential([
+    Dense(100, activation="swish", input_shape=input_shape),
+    BatchNormalization(),
+    Dropout(0.2),
+    Dense(50, activation="swish"),
+    BatchNormalization(),
+    Dropout(0.1),
+    Dense(1, activation="sigmoid")
+])
+base_model.compile(optimizer=Adam(learning_rate=0.005), loss="binary_crossentropy", metrics=["accuracy"])
+base_model.fit(X_flat, y, epochs=10, batch_size=32, validation_split=0.2)
+
+# Step 4: Get base predictions
+y_pred_base = base_model.predict(X_flat)
+
+# Step 5: Create meta input
+X_meta = np.concatenate([y_pred_base, X_flat], axis=1)
+
+# Step 6: Train meta-model on top of base predictions
+meta_model = Sequential([
+    Dense(64, activation="swish", input_shape=(X_meta.shape[1],)),
+    BatchNormalization(),
+    Dropout(0.2),
+    Dense(1, activation="sigmoid")
+])
+meta_model.compile(optimizer=Adam(learning_rate=0.001), loss="binary_crossentropy", metrics=["accuracy"])
+meta_model.fit(X_meta, y, epochs=5, batch_size=32, validation_split=0.2)
+
+# Final prediction (base + meta stacked)
+final_pred = meta_model.predict(X_meta)
