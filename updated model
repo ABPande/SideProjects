@@ -1,0 +1,121 @@
+import numpy as np
+import pandas as pd
+from scipy.signal import argrelextrema
+from sklearn.preprocessing import StandardScaler
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv1D, MaxPooling1D, LSTM, Dense, Dropout, BatchNormalization
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.losses import BinaryCrossentropy
+from tensorflow.keras.callbacks import EarlyStopping
+import matplotlib.pyplot as plt
+
+# Assume `df` is the latest data already loaded with columns: 'dateTime', 'current'
+# Step 1: Add engineered features
+def add_features(df):
+    df = df.copy()
+    df['delta'] = df['current'].diff().fillna(0)
+    df['rolling_avg'] = df['current'].rolling(30).mean().fillna(method='bfill')
+    df['zscore'] = (df['current'] - df['rolling_avg']) / (df['current'].rolling(30).std().fillna(1))
+    df['vol'] = df['current'].rolling(30).std().fillna(method='bfill')
+    return df
+
+# Step 2: Label peaks for training
+def label_peaks(values, order=15):
+    peaks = argrelextrema(values.values, np.greater, order=order)[0]
+    labels = np.zeros_like(values)
+    labels[peaks] = 1
+    return labels
+
+# Step 3: Create sequences and labels
+def create_sequences(df, labels, window=360, stride=10, feature_cols=None):
+    X, y, timestamps = [], [], []
+    for i in range(0, len(df) - window - 1, stride):
+        x_seq = df.iloc[i:i + window][feature_cols].values
+        y_label = labels[i + window]
+        ts = df.iloc[i + window]['dateTime']
+        X.append(x_seq)
+        y.append(y_label)
+        timestamps.append(ts)
+    return np.array(X), np.array(y), np.array(timestamps)
+
+# Step 4: Build model
+def build_model(input_shape):
+    model = Sequential([
+        Conv1D(32, kernel_size=5, activation='relu', input_shape=input_shape),
+        MaxPooling1D(pool_size=2),
+        Conv1D(64, kernel_size=5, activation='relu'),
+        MaxPooling1D(pool_size=2),
+        LSTM(64),
+        BatchNormalization(),
+        Dropout(0.2),
+        Dense(32, activation='relu'),
+        BatchNormalization(),
+        Dropout(0.2),
+        Dense(1, activation='sigmoid')
+    ])
+    model.compile(optimizer=Adam(1e-3), loss=BinaryCrossentropy(), metrics=['accuracy'])
+    return model
+
+# Step 5: Predict peak per time window
+def find_peaks_by_window(df_pred, start_end_pairs):
+    peak_times = []
+    for start_str, end_str in start_end_pairs:
+        start = pd.to_datetime(start_str)
+        end = pd.to_datetime(end_str)
+        mask = (df_pred['dateTime'] >= start) & (df_pred['dateTime'] <= end)
+        sub_df = df_pred.loc[mask]
+        if not sub_df.empty:
+            idx_max = (sub_df['probability'] * sub_df['current']).idxmax()
+            peak_times.append(df_pred.loc[idx_max, 'dateTime'])
+        else:
+            peak_times.append(None)
+    return peak_times
+
+# Full execution
+def run_peak_prediction_pipeline(df):
+    df = df.copy()
+    df = add_features(df)
+    feature_cols = ['current', 'delta', 'rolling_avg', 'zscore', 'vol']
+
+    # Normalize features
+    scaler = StandardScaler()
+    df[feature_cols] = scaler.fit_transform(df[feature_cols])
+
+    # Label data
+    labels = label_peaks(df['current'])
+
+    # Prepare sequences
+    X, y, timestamps = create_sequences(df, labels, feature_cols=feature_cols)
+
+    # Split
+    split_idx = int(0.8 * len(X))
+    X_train, y_train = X[:split_idx], y[:split_idx]
+    X_val, y_val = X[split_idx:], y[split_idx:]
+    ts_val = timestamps[split_idx:]
+
+    # Model
+    model = build_model(input_shape=X.shape[1:])
+    model.fit(X_train, y_train, epochs=15, batch_size=32,
+              validation_data=(X_val, y_val),
+              callbacks=[EarlyStopping(patience=3, restore_best_weights=True)])
+
+    # Predict
+    y_pred = model.predict(X_val).flatten()
+    df_pred = pd.DataFrame({
+        'dateTime': ts_val,
+        'probability': y_pred
+    })
+    df_pred = df_pred.merge(df[['dateTime', 'current']], on='dateTime', how='left')
+
+    # Define windows
+    time_windows = [
+        ("2025-04-14 14:11:00", "2025-04-14 14:21:00"),
+        ("2025-04-14 14:27:00", "2025-04-14 14:37:00"),
+        ("2025-04-14 14:43:00", "2025-04-14 14:53:00"),
+    ]
+
+    peaks = find_peaks_by_window(df_pred, time_windows)
+    return pd.DataFrame({'Window': time_windows, 'Predicted Peak Time': peaks})
+
+# The user must provide a DataFrame named `df` before calling:
+# result = run_peak_prediction_pipeline(df)
