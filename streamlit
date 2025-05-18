@@ -1,5 +1,43 @@
 import streamlit as st
 import pandas as pd
+import matplotlib.pyplot as plt
+
+# Dummy data for testing (replace with your own)
+current_data = [10, 12, 14, 13, 15, 17, 16]
+prediction_data = [9, 13, 13, 14, 16, 18, 15]
+index = list(range(len(current_data)))
+
+# Convert to DataFrame
+df = pd.DataFrame({
+    'Index': index,
+    'Current': current_data,
+    'Prediction': prediction_data
+})
+
+st.title("Current Data vs Prediction")
+
+# Line plot
+fig, ax = plt.subplots()
+ax.plot(df['Index'], df['Current'], label='Current', marker='o')
+ax.plot(df['Index'], df['Prediction'], label='Prediction', marker='x')
+ax.set_xlabel("Index")
+ax.set_ylabel("Value")
+ax.set_title("Current vs Prediction")
+ax.legend()
+st.pyplot(fig)
+
+
+
+
+
+
+
+
+
+###################
+
+import streamlit as st
+import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta
 import random
@@ -56,13 +94,91 @@ st.plotly_chart(fig, use_container_width=True)
 # Rerun every 2 seconds
 st.experimental_rerun()
 
+###################
+
+
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+
+# --- Replace these with your real vectors or load from a file ---
+current_data     = [10, 12, 14, 13, 15, 17, 16]
+prediction_data  = [ 9, 13, 13, 14, 16, 18, 15]
+index            = list(range(len(current_data)))   # could be timestamps
+
+df = pd.DataFrame({
+    "Index":      index,
+    "Current":    current_data,
+    "Prediction": prediction_data
+})
+
+st.title("📈 Current Data vs Prediction (interactive)")
+
+# Long-format for Plotly Express
+long_df = df.melt(id_vars="Index", var_name="Series", value_name="Value")
+
+fig = px.line(
+    long_df,
+    x="Index",
+    y="Value",
+    color="Series",
+    markers=True,
+    title="Current vs Prediction"
+)
+
+# Tighten layout & show
+fig.update_layout(margin=dict(l=20, r=20, t=60, b=20))
+st.plotly_chart(fig, use_container_width=True)
+
+# Optional: residuals (prediction error)
+if st.checkbox("Show residual error"):
+    df["Residual"] = df["Prediction"] - df["Current"]
+    fig_resid = px.bar(df, x="Index", y="Residual", title="Residual (Prediction – Current)")
+    st.plotly_chart(fig_resid, use_container_width=True)
+
+
+
+
+########################
+
+
+
+current_data = {
+    "datetime": ["2024-01-01 10:00", "2024-01-01 10:01", "2024-01-01 10:02"],
+    "current": [10.2, 10.4, 10.1],
+    "voltage": [220, 221, 219],        # extra key you don’t need
+    "device_id": ["dev1", "dev1", "dev1"]
+}
 
 
 
 
 
+import pandas as pd
+
+# Convert dictionary to DataFrame
+df = pd.DataFrame(current_data)
+
+# Keep only datetime and current
+df_current = df[["datetime", "current"]]
 
 
+df_current["datetime"] = pd.to_datetime(df_current["datetime"])
+
+
+import streamlit as st
+import plotly.express as px
+
+st.title("Current vs Prediction Over Time")
+
+# Melt to long format for easier plotting
+df_long = df_current.melt(id_vars="datetime", 
+                          value_vars=["current", "prediction"], 
+                          var_name="Series", 
+                          value_name="Value")
+
+fig = px.line(df_long, x="datetime", y="Value", color="Series", markers=True)
+st.plotly_chart(fig, use_container_width=True)
 
 
 
