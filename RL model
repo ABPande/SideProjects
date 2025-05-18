@@ -1,0 +1,79 @@
+
+import numpy as np
+import os
+import pandas as pd
+from sklearn.preprocessing import MinMaxScaler
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import (Input, Conv1D, BatchNormalization, ReLU,
+                                     Add, Dense, Dropout, MultiHeadAttention,
+                                     LayerNormalization, GlobalAveragePooling1D)
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.losses import BinaryCrossentropy
+from tensorflow.keras.callbacks import EarlyStopping
+from scipy.signal import find_peaks
+import joblib
+
+# ---------------------- Step 1: Load or Simulate Data ----------------------
+np.random.seed(42)
+price_series = np.cumsum(np.random.randn(3000)) + 1000  # Simulated data
+
+SEQ_LEN = 60
+PRED_HORIZON = 30
+
+def create_dataset(price_series, seq_len, horizon):
+    X, y = [], []
+    for i in range(len(price_series) - seq_len - horizon):
+        window = price_series[i:i+seq_len]
+        future_window = price_series[i+seq_len:i+seq_len+horizon]
+        peaks, _ = find_peaks(future_window, distance=10)
+        y.append(1 if len(peaks) > 0 else 0)
+        X.append(window)
+    return np.array(X), np.array(y)
+
+X, y = create_dataset(price_series, SEQ_LEN, PRED_HORIZON)
+
+# ---------------------- Step 2: Normalize ----------------------
+scaler = MinMaxScaler()
+X_scaled = np.array([scaler.fit_transform(x.reshape(-1, 1)).flatten() for x in X])
+X_scaled = X_scaled[..., np.newaxis]
+
+# ---------------------- Step 3: Model Definition ----------------------
+def residual_block(x, filters, dilation):
+    shortcut = x
+    x = Conv1D(filters, kernel_size=3, padding='causal', dilation_rate=dilation)(x)
+    x = BatchNormalization()(x)
+    x = ReLU()(x)
+    x = Add()([shortcut, x])
+    return x
+
+def build_model(input_shape):
+    inp = Input(shape=input_shape)
+    x = Conv1D(64, kernel_size=3, padding='causal', dilation_rate=1)(inp)
+    x = BatchNormalization()(x)
+    x = ReLU()(x)
+    for d in [2, 4, 8, 16]:
+        x = residual_block(x, 64, dilation=d)
+    attn_output = MultiHeadAttention(num_heads=4, key_dim=32)(x, x)
+    x = Add()([x, attn_output])
+    x = LayerNormalization()(x)
+    x = GlobalAveragePooling1D()(x)
+    x = Dense(64, activation='relu')(x)
+    x = Dropout(0.3)(x)
+    out = Dense(1, activation='sigmoid')(x)
+    return Model(inputs=inp, outputs=out)
+
+model = build_model((SEQ_LEN, 1))
+model.compile(optimizer=Adam(1e-3), loss=BinaryCrossentropy(), metrics=['accuracy'])
+
+# ---------------------- Step 4: Training ----------------------
+callbacks = [EarlyStopping(patience=5, restore_best_weights=True)]
+model.fit(X_scaled, y, epochs=20, batch_size=32, validation_split=0.2, callbacks=callbacks)
+
+# ---------------------- Step 5: Save ----------------------
+save_dir = "hangseng_model"
+os.makedirs(save_dir, exist_ok=True)
+
+model.save(os.path.join(save_dir, "peak_model.keras"))
+joblib.dump(scaler, os.path.join(save_dir, "scaler.gz"))
+
+print(f"Model and scaler saved to: {save_dir}")
