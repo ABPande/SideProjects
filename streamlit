@@ -55,3 +55,59 @@ st.plotly_chart(fig, use_container_width=True)
 
 # Rerun every 2 seconds
 st.experimental_rerun()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+################
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+from datetime import datetime, timedelta
+
+# Simulated current data (in format: {'current': value, 'dateTime': timestamp})
+current_data = [
+    {'current': 22022, 'dateTime': '20250518112930'},
+    {'current': 22025, 'dateTime': '20250518112932'},
+    {'current': 22030, 'dateTime': '20250518112934'},
+    {'current': 22035, 'dateTime': '20250518112936'},
+]
+
+# Simulated predicted data (new predicted values)
+predicted_data = [21980, 21990, 22010, 22015]
+
+# Step 1: Format predicted data into the same structure as current_data
+predictions = []
+base_time = datetime.strptime(current_data[-1]['dateTime'], '%Y%m%d%H%M%S') + timedelta(seconds=2)
+
+for i, pred in enumerate(predicted_data):
+    pred_time = base_time + timedelta(seconds=2 * i)
+    predictions.append({'current': pred, 'dateTime': pred_time.strftime('%Y%m%d%H%M%S')})
+
+# Combine both current and predicted data into a single dataframe
+df_current = pd.DataFrame(current_data)
+df_current["type"] = "Actual"
+df_predicted = pd.DataFrame(predictions)
+df_predicted["type"] = "Prediction"
+
+# Combine them into one DataFrame
+df = pd.concat([df_current, df_predicted], ignore_index=True)
+
+# Convert 'dateTime' to pandas datetime for better plotting
+df['datetime'] = pd.to_datetime(df['dateTime'], format='%Y%m%d%H%M%S')
+
+# Step 2: Plot both current and predicted data
+fig = px.line(df, x="datetime", y="current", color="type", markers=True, title="Current Data vs Prediction")
+fig.update_layout(xaxis_title="Time", yaxis_title="Current Value")
+
+st.plotly_chart(fig, use_container_width=True)
