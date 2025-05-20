@@ -1,4 +1,4 @@
-import numpy as np import pandas as pd from scipy.signal import savgol_filter import os from gymnasium import Env, spaces from stable_baselines3 import PPO from stable_baselines3.common.env_checker import check_env from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize from stable_baselines3.common.callbacks import EvalCallback
+import numpy as np import pandas as pd from scipy.signal import savgol_filter import os from gymnasium import Env, spaces from stable_baselines3 import PPO from stable_baselines3.common.env_checker import check_env from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 ---------------------- Step 1: Generate and Save Simulated Data ----------------------
 
@@ -13,7 +13,7 @@ os.makedirs("data", exist_ok=True) pd.DataFrame({"current": price_series}).to_cs
 class HangSengSellEnv(Env): def init(self, price_series, seq_len=30, max_inventory=100, max_steps=300): super().init() self.price_series = price_series self.seq_len = seq_len self.max_inventory = max_inventory self.max_steps = max_steps
 
 self.action_space = spaces.Discrete(11)
-    self.observation_space = spaces.Box(low=0, high=1, shape=(seq_len + 2,), dtype=np.float32)
+    self.observation_space = spaces.Box(low=0, high=1, shape=(seq_len + 4,), dtype=np.float32)
     self.reset()
 
 def reset(self, seed=None, options=None):
@@ -30,7 +30,15 @@ def _get_obs(self):
                                self.pointer + self.current_step + self.seq_len]
     denoised = savgol_filter(window, window_length=7, polyorder=2)
     normed = (denoised - np.min(denoised)) / (np.max(denoised) - np.min(denoised) + 1e-6)
-    obs = np.concatenate([normed, [self.inventory / self.max_inventory], [self.current_step / self.max_steps]])
+    slope = np.polyfit(np.arange(len(denoised)), denoised, 1)[0]
+    volatility = np.std(denoised)
+    obs = np.concatenate([
+        normed,
+        [slope / 10],
+        [volatility / 100],
+        [self.inventory / self.max_inventory],
+        [self.current_step / self.max_steps]
+    ])
     return obs.astype(np.float32)
 
 def step(self, action):
@@ -38,11 +46,16 @@ def step(self, action):
     current_idx = self.pointer + self.current_step + self.seq_len - 1
     current_price = self.price_series[current_idx]
 
-    future_window = self.price_series[current_idx + 1:current_idx + 300]
+    future_window = self.price_series[current_idx + 1 : current_idx + 300]
     future_max = np.max(future_window) if len(future_window) > 0 else current_price
-    proximity = (current_price / future_max) if future_max > 0 else 1.0
 
-    reward = units_to_sell * current_price/23000 * proximity
+    price_gap = future_max - current_price
+    proximity_bonus = np.exp(-price_gap / 20)
+
+    reward = units_to_sell * (current_price / BASE_INDEX) * proximity_bonus
+
+    if self.inventory > 0 and self.current_step == self.max_steps - 1:
+        reward += self.inventory * (current_price / BASE_INDEX) * 0.2
 
     self.inventory -= units_to_sell
     self.total_cash += reward
