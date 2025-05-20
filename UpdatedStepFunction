@@ -1,0 +1,41 @@
+    def step(self, action):
+        units_to_sell = min(action, self.inventory)
+        current_idx = self.pointer + self.current_step + self.seq_len - 1
+        current_price = self.price_series[current_idx]
+
+        # Future max
+        future_window = self.price_series[current_idx + 1 : current_idx + (300 - self.current_step)]
+        future_max = np.max(future_window) if len(future_window) > 0 else current_price
+
+        # Historical extremes
+        past_max = np.max(self.past_values) if len(self.past_values) > 0 else current_price
+        past_min = np.min(self.past_values) if len(self.past_values) > 0 else current_price
+
+        # Proximity = how close we are to peak (0 to 1)
+        proximity = current_price / future_max if future_max > 0 else 1.0
+
+        # Intelligent timing factors
+        patience_factor = 0
+        delay_penalty = 0
+
+        if units_to_sell > 0:
+            if current_price >= past_max and current_price >= future_max:
+                patience_factor = 1.0  # sold at local + future peak
+            elif current_price >= future_max and current_price < past_max:
+                delay_penalty = 0.5  # waited too long before peak
+            elif current_price < future_max and current_price < past_max:
+                delay_penalty = 1.0  # sold early and missed a high
+            elif current_price < future_max and current_price > past_max:
+                patience_factor = 0.5  # shot too early
+
+        # Final reward
+        reward = (units_to_sell / 10) + proximity + patience_factor - delay_penalty 
+
+        # Update state
+        self.past_values = np.append(self.past_values, current_price)
+        self.inventory -= units_to_sell
+        self.total_cash += reward
+        self.current_step += 1
+        self.done = self.inventory <= 0 or self.current_step >= self.max_steps
+
+        return self._get_obs(), reward, self.done, False, {}
