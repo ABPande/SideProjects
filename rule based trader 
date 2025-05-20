@@ -1,0 +1,97 @@
+import pandas as pd
+import numpy as np
+from scipy.signal import argrelextrema
+from datetime import datetime, timedelta
+import time
+
+class RuleBasedTrader:
+    def __init__(self, historical_csv):
+        self.df = pd.read_csv(historical_csv)
+        self.df['dateTime'] = pd.to_datetime(self.df['dateTime'], format="%Y%m%d%H%M%S")
+        self.df = self.df.sort_values("dateTime")
+
+        print("Mining rules from historical data...")
+        self._mine_thresholds()
+        print(f"Mined thresholds: zscore>{self.zscore_thresh:.2f}, "
+              f"percentile>{self.percentile_thresh:.2f}, "
+              f"jump>{self.jump_thresh:.2f} pts")
+
+        # Live tracking
+        self.window = []
+        self.timestamps = []
+        self.last_sell_time = None
+        self.cooldown = timedelta(minutes=3)
+
+    def _mine_thresholds(self):
+        # Identify peaks over a 10-minute rolling window
+        self.df['peak'] = False
+        peak_indices = argrelextrema(self.df['current'].values, np.greater, order=150)[0]
+        self.df.loc[peak_indices, 'peak'] = True
+
+        # Rolling stats
+        self.df['rolling_mean'] = self.df['current'].rolling(300).mean()
+        self.df['rolling_std'] = self.df['current'].rolling(300).std()
+        self.df['zscore'] = (self.df['current'] - self.df['rolling_mean']) / (self.df['rolling_std'] + 1e-6)
+        self.df['percentile'] = self.df['current'].rolling(300).apply(lambda x: pd.Series(x).rank(pct=True).iloc[-1])
+        self.df['price_jump_30s'] = self.df['current'].diff(15)
+
+        peak_data = self.df[self.df['peak'] & self.df['zscore'].notnull()]
+
+        # Use robust quantiles
+        self.zscore_thresh = peak_data['zscore'].quantile(0.85)
+        self.percentile_thresh = peak_data['percentile'].quantile(0.9)
+        self.jump_thresh = peak_data['price_jump_30s'].quantile(0.85)
+
+    def update_live_price(self, current_data):
+        price = current_data["current"]
+        now = datetime.strptime(current_data["dateTime"], "%Y%m%d%H%M%S")
+
+        self.window.append(price)
+        self.timestamps.append(now)
+
+        if len(self.window) > 300:
+            self.window.pop(0)
+            self.timestamps.pop(0)
+
+        if len(self.window) < 300:
+            return False, "Warming up..."
+
+        series = pd.Series(self.window)
+        mean = series.mean()
+        std = series.std()
+        z = (price - mean) / (std + 1e-6)
+        percentile = pd.Series(series).rank(pct=True).iloc[-1]
+        price_jump_30s = price - self.window[-15]  # 30s jump
+
+        if (
+            z > self.zscore_thresh and
+            percentile > self.percentile_thresh and
+            price_jump_30s > self.jump_thresh and
+            (self.last_sell_time is None or now - self.last_sell_time > self.cooldown)
+        ):
+            self.last_sell_time = now
+            return True, f"SELL @ {price} | z={z:.2f} | jump={price_jump_30s:.1f} | >{int(self.percentile_thresh*100)}th pct"
+        
+        return False, f"HOLD @ {price} | z={z:.2f} | jump={price_jump_30s:.1f}"
+
+# ----------------------------
+# Example simulation loop
+# ----------------------------
+if __name__ == "__main__":
+    trader = RuleBasedTrader("hang_seng_2months.csv")
+
+    while True:
+        # Replace this with live price polling
+        current_data = {
+            "current": np.random.normal(19500, 120),  # Simulated live price
+            "dateTime": datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        }
+
+        decision, message = trader.update_live_price(current_data)
+        print(message)
+
+        if decision:
+            # Hook to trigger sell logic
+            pass
+
+        time.sleep(2)
