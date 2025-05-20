@@ -3,7 +3,7 @@ import time
 import numpy as np
 from scipy.signal import savgol_filter
 from stable_baselines3 import PPO
-
+from gym_env import HangSengSellEnv
 
 # ---------------------- Load PPO Model ----------------------
 model = PPO.load("trained_model/ppo_hangseng_agent")
